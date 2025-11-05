@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { generateDummyData, type DataRow } from '@/lib/dummyData'
 
@@ -13,6 +13,9 @@ export default function DataTable() {
   const [currentPage, setCurrentPage] = useState(1)
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [isResizing, setIsResizing] = useState<string | null>(null)
+  const tableRef = useRef<HTMLTableElement>(null)
 
   const itemsPerPage = 20
 
@@ -99,17 +102,62 @@ export default function DataTable() {
     setExpandedRows(newExpanded)
   }
 
-  const columns: { key: keyof DataRow; label: string; width?: string }[] = [
-    { key: 'id', label: 'ID', width: 'w-16' },
-    { key: 'name', label: 'Name', width: 'w-40' },
-    { key: 'email', label: 'Email', width: 'w-48' },
-    { key: 'role', label: 'Role', width: 'w-32' },
-    { key: 'department', label: 'Department', width: 'w-32' },
-    { key: 'status', label: 'Status', width: 'w-24' },
-    { key: 'salary', label: 'Salary', width: 'w-28' },
-    { key: 'startDate', label: 'Start Date', width: 'w-32' },
-    { key: 'performance', label: 'Performance', width: 'w-28' },
+  const defaultColumnWidths: Record<string, number> = {
+    id: 80,
+    name: 180,
+    email: 220,
+    role: 140,
+    department: 140,
+    status: 100,
+    salary: 120,
+    startDate: 140,
+    performance: 140,
+  }
+
+  const columns: { key: keyof DataRow; label: string }[] = [
+    { key: 'id', label: 'ID' },
+    { key: 'name', label: 'Name' },
+    { key: 'email', label: 'Email' },
+    { key: 'role', label: 'Role' },
+    { key: 'department', label: 'Department' },
+    { key: 'status', label: 'Status' },
+    { key: 'salary', label: 'Salary' },
+    { key: 'startDate', label: 'Start Date' },
+    { key: 'performance', label: 'Performance' },
   ]
+
+  // Initialize column widths on mount
+  useEffect(() => {
+    setColumnWidths(defaultColumnWidths)
+  }, [])
+
+  // Handle column resize
+  const handleMouseDown = (columnKey: string) => (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizing(columnKey)
+    const startX = e.clientX
+    const startWidth = columnWidths[columnKey] || defaultColumnWidths[columnKey]
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startX
+      const newWidth = Math.max(50, startWidth + diff) // Minimum width of 50px
+      setColumnWidths(prev => ({ ...prev, [columnKey]: newWidth }))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(null)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'default'
+      document.body.style.userSelect = 'auto'
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   if (isLoading) {
     return (
@@ -153,6 +201,14 @@ export default function DataTable() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-sm"
+              onClick={() => setColumnWidths(defaultColumnWidths)}
+            >
+              Reset Columns
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               onClick={() => setData(generateDummyData(500))}
             >
@@ -165,10 +221,10 @@ export default function DataTable() {
       {/* Table Container */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-max">
+          <table ref={tableRef} className="relative" style={{ tableLayout: 'fixed', width: 'max-content' }}>
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                <th className="p-4 w-12">
+                <th className="p-4" style={{ width: '48px' }}>
                   <input
                     type="checkbox"
                     checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
@@ -176,14 +232,15 @@ export default function DataTable() {
                     className="w-4 h-4 rounded"
                   />
                 </th>
-                <th className="p-4 w-12"></th>
-                {columns.map((column) => (
+                <th className="p-4" style={{ width: '48px' }}></th>
+                {columns.map((column, index) => (
                   <th
                     key={column.key}
-                    className={`p-4 text-left font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${column.width}`}
+                    className="relative p-4 text-left font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    style={{ width: `${columnWidths[column.key] || defaultColumnWidths[column.key]}px` }}
                     onClick={() => handleSort(column.key)}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 pr-4">
                       {column.label}
                       {sortColumn === column.key && (
                         <motion.span
@@ -195,6 +252,18 @@ export default function DataTable() {
                         </motion.span>
                       )}
                     </div>
+                    {/* Resize Handle */}
+                    {index < columns.length - 1 && (
+                      <div
+                        className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500 transition-colors ${
+                          isResizing === column.key ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                        onMouseDown={handleMouseDown(column.key)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="absolute inset-y-0 -left-1 -right-1 z-10" />
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -212,7 +281,7 @@ export default function DataTable() {
                       selectedRows.has(row.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
                   >
-                    <td className="p-4">
+                    <td className="p-4" style={{ width: '48px' }}>
                       <input
                         type="checkbox"
                         checked={selectedRows.has(row.id)}
@@ -220,7 +289,7 @@ export default function DataTable() {
                         className="w-4 h-4 rounded"
                       />
                     </td>
-                    <td className="p-4">
+                    <td className="p-4" style={{ width: '48px' }}>
                       <motion.button
                         whileHover={{ scale: 1.2 }}
                         whileTap={{ scale: 0.9 }}
@@ -236,17 +305,17 @@ export default function DataTable() {
                         </motion.span>
                       </motion.button>
                     </td>
-                    <td className="p-4 font-medium">{row.id}</td>
-                    <td className="p-4">
+                    <td className="p-4 font-medium truncate" style={{ width: `${columnWidths.id || defaultColumnWidths.id}px` }}>{row.id}</td>
+                    <td className="p-4 truncate" style={{ width: `${columnWidths.name || defaultColumnWidths.name}px` }}>
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500" />
-                        {row.name}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0" />
+                        <span className="truncate">{row.name}</span>
                       </div>
                     </td>
-                    <td className="p-4 text-sm">{row.email}</td>
-                    <td className="p-4">{row.role}</td>
-                    <td className="p-4">{row.department}</td>
-                    <td className="p-4">
+                    <td className="p-4 text-sm truncate" style={{ width: `${columnWidths.email || defaultColumnWidths.email}px` }} title={row.email}>{row.email}</td>
+                    <td className="p-4 truncate" style={{ width: `${columnWidths.role || defaultColumnWidths.role}px` }}>{row.role}</td>
+                    <td className="p-4 truncate" style={{ width: `${columnWidths.department || defaultColumnWidths.department}px` }}>{row.department}</td>
+                    <td className="p-4" style={{ width: `${columnWidths.status || defaultColumnWidths.status}px` }}>
                       <motion.span
                         whileHover={{ scale: 1.1 }}
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -260,9 +329,9 @@ export default function DataTable() {
                         {row.status}
                       </motion.span>
                     </td>
-                    <td className="p-4">${row.salary.toLocaleString()}</td>
-                    <td className="p-4 text-sm">{row.startDate}</td>
-                    <td className="p-4">
+                    <td className="p-4 truncate" style={{ width: `${columnWidths.salary || defaultColumnWidths.salary}px` }}>${row.salary.toLocaleString()}</td>
+                    <td className="p-4 text-sm truncate" style={{ width: `${columnWidths.startDate || defaultColumnWidths.startDate}px` }}>{row.startDate}</td>
+                    <td className="p-4" style={{ width: `${columnWidths.performance || defaultColumnWidths.performance}px` }}>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                           <motion.div

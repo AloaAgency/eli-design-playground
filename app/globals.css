@@ -36,4 +36,17 @@ body {
   .animation-delay-600 {
     animation-delay: 600ms;
   }
+
+  /* Table resize cursor */
+  .cursor-col-resize {
+    cursor: col-resize !important;
+  }
+
+  /* Disable text selection during resize */
+  .select-none-important {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+  }
 }
